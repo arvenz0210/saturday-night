@@ -39,6 +39,8 @@ export interface ViewerLayout {
   light?: { azimuth: number; elevation: number };
   /** Caught-shadow darkness on the white table (0..1). */
   shadowStrength?: number;
+  /** "mobile" lowers resolution, shadow map size and frame rate for phones. */
+  quality?: "high" | "mobile";
 }
 
 export const DESKTOP_LAYOUT: ViewerLayout = { theme: "studio" };
@@ -130,7 +132,8 @@ const HAS_TANGENTS = 128;
 const RECOLORABLE = 256;
 const IS_LED = 512;
 
-const SHADOW_SIZE = 2048;
+const SHADOW_SIZE_HIGH = 2048;
+const SHADOW_SIZE_MOBILE = 1024;
 const BACKGROUND: [number, number, number] = [0.012, 0.012, 0.015];
 const PLATTER_RPM = 33.33;
 /** Press feedback: the button's own LED blinks off briefly. */
@@ -206,6 +209,8 @@ export function startViewer(
   layout: ViewerLayout = DESKTOP_LAYOUT,
 ): ViewerHandle {
   const table = layout.theme === "table";
+  const mobileQuality = layout.quality === "mobile";
+  const SHADOW_SIZE = mobileQuality ? SHADOW_SIZE_MOBILE : SHADOW_SIZE_HIGH;
   const settings: ViewerSettings = { ...initialSettings };
   let disposed = false;
   let gpu: Gpu | undefined;
@@ -282,12 +287,13 @@ export function startViewer(
     // --- Lighting environment -------------------------------------------------------------------
     callbacks.onProgress({ phase: "environment" });
     const blitter = new Blitter(device);
-    const env = await buildEnvironment(ctx, blitter);
+    const env = await buildEnvironment(ctx, blitter, mobileQuality ? "mobile" : "high");
     mark("environment-built");
     if (disposed) return;
 
     // --- Render targets -------------------------------------------------------------------------------
-    const canvasSurface = surface(ctx, canvas, { dpr: [1, 2] });
+    // Phones: cap the backing resolution; the HDR + MSAA pipeline is fill-rate bound.
+    const canvasSurface = surface(ctx, canvas, { dpr: mobileQuality ? [1, 1.5] : [1, 2] });
     const [w0, h0] = canvasSurface.size;
     // Table theme clears to alpha 0 so post composites the white background and the caught shadow.
     const clearColor: [number, number, number, number] = table ? [1, 1, 1, 0] : [...BACKGROUND, 1];
@@ -328,6 +334,7 @@ export function startViewer(
       pressMinC: [0, 0, 0, 0], pressMaxC: [0, 0, 0, 0],
       pressMinD: [0, 0, 0, 0], pressMaxD: [0, 0, 0, 0],
       ledStates: [1, 1, 0, 0],
+      shadowTaps: mobileQuality ? 8 : 16,
     });
     const lightUniforms = uniforms(ctx, { viewProjection: new Float32Array(16) });
     const sharedSceneBindings = {
@@ -1180,7 +1187,7 @@ export function startViewer(
         fpsAccumulator = 0;
         fpsFrames = 0;
       }
-    });
+    }, mobileQuality ? { fps: 60 } : undefined);
 
     callbacks.onReady({
       adapter: adapterName,

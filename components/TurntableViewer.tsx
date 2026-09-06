@@ -40,6 +40,11 @@ function useMobileLayout(): boolean | undefined {
   return mobile;
 }
 
+/** Phones and tablets: coarse pointer without hover. */
+function isTouchDevice(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(pointer: coarse) and (hover: none)").matches;
+}
+
 function formatBytes(n: number): string {
   if (n > 1e6) return `${(n / 1e6).toFixed(1)} MB`;
   if (n > 1e3) return `${(n / 1e3).toFixed(0)} KB`;
@@ -84,7 +89,7 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
       onError: (e) => setError(e.message),
       onStats: ({ fps }) => setFps(fps),
       onState: setDeck,
-    }, mobile ? MOBILE_LAYOUT : DESKTOP_LAYOUT);
+    }, mobile ? { ...MOBILE_LAYOUT, quality: isTouchDevice() ? "mobile" : "high" } : DESKTOP_LAYOUT);
     handleRef.current = handle;
     return () => {
       handleRef.current = null;

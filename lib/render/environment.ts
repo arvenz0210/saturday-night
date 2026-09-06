@@ -27,7 +27,8 @@ const SPECULAR_WIDTH = 512;
 const SPECULAR_HEIGHT = 256;
 const SPECULAR_MIPS = 7;
 
-export async function buildEnvironment(gpu: Gpu, blitter: Blitter): Promise<Environment> {
+export async function buildEnvironment(gpu: Gpu, blitter: Blitter, quality: "high" | "mobile" = "high"): Promise<Environment> {
+  const sampleScale = quality === "mobile" ? 0.4 : 1;
   const device = gpu.gpu;
   const envSampler = sampler(gpu, {
     addressModeU: "repeat",
@@ -83,7 +84,7 @@ export async function buildEnvironment(gpu: Gpu, blitter: Blitter): Promise<Envi
     levelTargets.push(levelTarget);
     const roughness = level / (SPECULAR_MIPS - 1);
     // Rougher levels are smaller, so they can afford more samples.
-    const sampleCount = level === 0 ? 1 : Math.min(512, 96 + level * 72);
+    const sampleCount = level === 0 ? 1 : Math.round(Math.min(512, 96 + level * 72) * sampleScale);
     prefilter.set({ params: { roughness, sampleCount, srcWidth: ENV_WIDTH, srcHeight: ENV_HEIGHT, srcMips: envMips } });
     frame(gpu, (f) => f.pass(levelTarget, prefilter));
     const encoder = device.createCommandEncoder({ label: `prefilter-copy-${level}` });
@@ -95,7 +96,7 @@ export async function buildEnvironment(gpu: Gpu, blitter: Blitter): Promise<Envi
   const irradiance = target(gpu, { size: [128, 64], format: "rgba16float", label: "irradiance" });
   const irradianceEffect = effect(gpu, irradianceShader, {
     label: "irradiance",
-    set: { params: { sampleCount: 384, lod: 3 }, env: envTexture, envSampler },
+    set: { params: { sampleCount: Math.round(384 * sampleScale), lod: 3 }, env: envTexture, envSampler },
   });
   frame(gpu, (f) => f.pass(irradiance, irradianceEffect));
 

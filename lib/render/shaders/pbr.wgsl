@@ -42,6 +42,8 @@ struct Scene {
   pressMaxD: vec4f,
   /** LED brightness multiplier per button box (A..D). */
   ledStates: vec4f,
+  /** Number of Poisson taps for the soft shadow (16 desktop, 8 mobile). */
+  shadowTaps: f32,
 }
 
 fn insideBox(p: vec3f, lo: vec4f, hi: vec4f) -> bool {
@@ -152,11 +154,12 @@ fn shadowFactor(worldPosition: vec3f, n: vec3f, nDotL: f32, fragCoord: vec2f) ->
   let rot = mat2x2f(vec2f(cos(angle), sin(angle)), vec2f(-sin(angle), cos(angle)));
   let radius = scene.shadowTexel * scene.shadowSoftness;
   var lit = 0.0;
-  for (var i = 0u; i < 16u; i++) {
+  let taps = clamp(u32(scene.shadowTaps), 4u, 16u);
+  for (var i = 0u; i < taps; i++) {
     let offset = (rot * POISSON[i]) * radius;
     lit += textureSampleCompareLevel(shadowMap, shadowSampler, uv + offset, p.z - 0.0008);
   }
-  return lit / 16.0;
+  return lit / f32(taps);
 }
 
 fn sampleEnvSpecular(dir: vec3f, roughness: f32) -> vec3f {
