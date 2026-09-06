@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# The test helmet stays out; the CC-BY turntable and record GLBs ship with the repo.
+public/models/DamagedHelmet.glb
+
+# Downloaded audio + cover art (copyrighted, local only)
+public/audio/
