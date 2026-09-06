@@ -44,9 +44,14 @@ export interface TonearmSpec {
   splitMeshes?: Array<{ mesh: number; min: [number, number, number]; max: [number, number, number] }>;
 }
 
+export type DeckButtonId = "startStop" | "speed33" | "speed45" | "quartz";
+
 export interface DeckControlsSpec {
-  /** START/STOP button as a scene-space sphere (meters). Tapping it toggles the platter motor. */
-  startStop?: { center: [number, number, number]; radius: number };
+  /**
+   * Physical buttons as scene-space boxes (meters). Tapping one triggers its action and
+   * the geometry inside the box dips (press animation); LEDs inside follow the button state.
+   */
+  buttons?: Array<{ id: DeckButtonId; min: [number, number, number]; max: [number, number, number] }>;
   /**
    * Pitch fader: knob meshes, travel direction in scene space (positive = faster),
    * half travel in meters and the speed change at full travel (fraction).
@@ -176,8 +181,12 @@ export const MODELS: Record<string, ModelSpec> = {
     },
     label: { image: "/audio/cover.jpg", diameter: 0.1, hole: 0.0075 },
     controls: {
-      // Big round START/STOP at the front-left corner of the plinth.
-      startStop: { center: [-0.17, 0.1, 0.125], radius: 0.028 },
+      buttons: [
+        { id: "startStop", min: [-0.218, 0.086, 0.13], max: [-0.172, 0.1, 0.17] }, // round START/STOP, front-left
+        { id: "speed33", min: [-0.182, 0.086, 0.152], max: [-0.145, 0.1, 0.178] },  // left bar
+        { id: "speed45", min: [-0.145, 0.086, 0.152], max: [-0.108, 0.1, 0.178] },  // right bar
+        { id: "quartz", min: [0.138, 0.086, 0.076], max: [0.192, 0.112, 0.11] },    // pitch lock by the fader (+ its LED)
+      ],
       // Fader knob rides the slot on the right edge; toward the front = faster.
       pitch: { meshes: [26], grabMeshes: [10], axis: [0, 0, 1], halfTravel: 0.055, maxPitch: 0.08 },
     },

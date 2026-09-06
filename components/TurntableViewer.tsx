@@ -56,7 +56,7 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
   const [info, setInfo] = useState<ViewerInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fps, setFps] = useState(0);
-  const [deck, setDeck] = useState<ViewerState>({ playing: true, armDown: true, armMoving: false, pitch: 0, audioEnabled: false, progress: 0 });
+  const [deck, setDeck] = useState<ViewerState>({ playing: true, armDown: true, armMoving: false, pitch: 0, audioEnabled: false, progress: 0, speed: 33, quartz: false });
   const spectrumRef = useRef<HTMLCanvasElement>(null);
   const [hudHidden, setHudHidden] = useState(false);
   const mobile = useMobileLayout();

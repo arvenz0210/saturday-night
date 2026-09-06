@@ -7,9 +7,9 @@ import {
 import { orbitControls, perspectiveCamera } from "vgpu/scene";
 import { mat4, vec3, type Mat4 } from "wgpu-matrix";
 import { parseGlb, VERTEX_STRIDE_BYTES, VERTEX_STRIDE_FLOATS, type GlbAsset, type GlbMaterial } from "@/lib/gltf/glb";
-import type { AttachmentSpec, ModelSpec } from "@/lib/models";
+import type { AttachmentSpec, DeckButtonId, ModelSpec } from "@/lib/models";
 import { buildEnvironment } from "./environment";
-import { isTap, rayLocalBox, raySphere, rayPlaneY, screenRay, TweenQueue, type Ray } from "./interaction";
+import { isTap, rayLocalBox, rayPlaneY, screenRay, TweenQueue, type Ray } from "./interaction";
 import { DeckAudio } from "./audio";
 import { Blitter, createImageTexture, createSolidTexture, gltfSamplerDescriptor } from "./textures";
 import pbrShader from "./shaders/pbr.wgsl";
@@ -44,7 +44,7 @@ export interface ViewerLayout {
 export const DESKTOP_LAYOUT: ViewerLayout = { theme: "studio" };
 export const MOBILE_LAYOUT: ViewerLayout = {
   theme: "table",
-  camera: { yaw: -0.05, pitch: 1.1, fit: 0.9 },
+  camera: { yaw: -0.05, pitch: 1.1, fit: 1.0 },
   light: { azimuth: -12, elevation: 58 },
   shadowStrength: 0.48,
 };
@@ -91,6 +91,10 @@ export interface ViewerState {
   audioEnabled: boolean;
   /** Position along the record, 0 = lead-in, 1 = run-out. */
   progress: number;
+  /** Selected nominal speed. */
+  speed: 33 | 45;
+  /** Quartz lock: pitch forced to 0 %. */
+  quartz: boolean;
 }
 
 export interface ViewerCallbacks {
@@ -129,6 +133,10 @@ const IS_LED = 512;
 const SHADOW_SIZE = 2048;
 const BACKGROUND: [number, number, number] = [0.012, 0.012, 0.015];
 const PLATTER_RPM = 33.33;
+const PRESS_DEPTH = 0.0012; // meters, before model scale
+/** A full LP side: the stylus travels lead-in to run-out in about 20 minutes at 33⅓. */
+const SIDE_SECONDS = 20 * 60;
+const PRESS_DURATION = 0.28; // seconds, down and back up
 
 const VERTEX_LAYOUT = {
   stride: VERTEX_STRIDE_BYTES,
@@ -315,6 +323,11 @@ export function startViewer(
       hideBoxMax: [0, 0, 0],
       hideBox2Min: [0, 0, 0],
       hideBox2Max: [0, 0, 0],
+      pressMinA: [0, 0, 0, 0], pressMaxA: [0, 0, 0, 0],
+      pressMinB: [0, 0, 0, 0], pressMaxB: [0, 0, 0, 0],
+      pressMinC: [0, 0, 0, 0], pressMaxC: [0, 0, 0, 0],
+      pressMinD: [0, 0, 0, 0], pressMaxD: [0, 0, 0, 0],
+      ledStates: [1, 1, 0, 0],
     });
     const lightUniforms = uniforms(ctx, { viewProjection: new Float32Array(16) });
     const sharedSceneBindings = {
@@ -704,7 +717,8 @@ export function startViewer(
       distance: { min: radius * 0.6, max: radius * 12 },
       pitch: { min: 0.02, max: 1.45 },
     });
-    const tableFocus: [number, number, number] = [0, height * 0.5, 0];
+    // The album floats over the lower part of the screen: aim below the deck so it sits high.
+    const tableFocus: [number, number, number] = [0, height * 0.5 - radius * 0.55, 0];
     fitCamera = table
       ? (aspect) => {
           // Distance so the deck's bounding sphere fits the narrower field of view.
@@ -777,6 +791,8 @@ export function startViewer(
       running: settings.spin,
       omega: settings.spin ? (PLATTER_RPM / 60) * Math.PI * 2 : 0,
       pitch: 0,
+      speed: 33 as 33 | 45,
+      quartz: false,
       armDown: !!arm,
       armValues: { yaw: arm ? armPlayYaw : 0, tilt: arm ? armPlayTilt : 0 },
     };
@@ -791,7 +807,7 @@ export function startViewer(
     const pitchInstances = instances.filter((i) => i.role === "pitch" && pitchSpecMoves(i.meshIndex));
     const pitchAxis = pitchSpec ? vec3.normalize(vec3.create(...pitchSpec.axis)) : vec3.create(0, 0, 1);
     let progress = 0;
-    const emitState = () => callbacks.onState?.({ playing: deck.running, armDown: deck.armDown, armMoving: armTweens.busy, pitch: deck.pitch, audioEnabled: !!audio?.enabled, progress });
+    const emitState = () => callbacks.onState?.({ playing: deck.running, armDown: deck.armDown, armMoving: armTweens.busy, pitch: deck.pitch, audioEnabled: !!audio?.enabled, progress, speed: deck.speed, quartz: deck.quartz });
     const applyArmPose = () => {
       const pose = armPose(deck.armValues.yaw, deck.armValues.tilt);
       for (const inst of armInstances) inst.pose = pose;
@@ -806,11 +822,7 @@ export function startViewer(
       const pose = mat4.translation(vec3.scale(pitchAxis, offset));
       for (const inst of pitchInstances) inst.pose = pose;
     };
-    togglePlayImpl = () => {
-      deck.running = !deck.running;
-      settings.spin = deck.running;
-      emitState();
-    };
+    togglePlayImpl = () => pressButton("startStop");
     toggleArmImpl = () => {
       if (!arm) return;
       deck.armDown = !deck.armDown;
@@ -853,14 +865,44 @@ export function startViewer(
     };
 
     // --- Gestures: tap the arm, tap START/STOP, drag the pitch fader ---------------------------------
-    const startStop = model.controls?.startStop
-      ? { center: vec3.transformMat4(vec3.create(...model.controls.startStop.center), root), radius: model.controls.startStop.radius * scale }
-      : undefined;
+    // Physical buttons: world-space boxes, press animation state, LED multipliers.
+    const buttonSlots = ["A", "B", "C", "D"] as const;
+    const buttons = (model.controls?.buttons ?? []).slice(0, 4).map((b, i) => ({
+      id: b.id,
+      slot: buttonSlots[i],
+      bounds: transformBounds(b.min, b.max, root),
+      pressedAt: -Infinity,
+    }));
+    for (const b of buttons) {
+      sceneUniforms.set({ [`pressMin${b.slot}`]: [...b.bounds.min, 0], [`pressMax${b.slot}`]: [...b.bounds.max, 0] });
+    }
+    const identity = mat4.identity();
+    const updateLeds = () => {
+      const states = [1, 1, 0, 0];
+      for (const [i, b] of buttons.entries()) {
+        states[i] = b.id === "speed33" ? (deck.speed === 33 ? 1 : 0.08)
+          : b.id === "speed45" ? (deck.speed === 45 ? 1 : 0.08)
+          : b.id === "quartz" ? (deck.quartz ? 1 : 0.05)
+          : 1;
+      }
+      sceneUniforms.set({ ledStates: states });
+    };
+    updateLeds();
+    const pressButton = (id: DeckButtonId) => {
+      const b = buttons.find((x) => x.id === id);
+      if (b) b.pressedAt = performance.now();
+      if (id === "startStop") { deck.running = !deck.running; settings.spin = deck.running; }
+      else if (id === "speed33") deck.speed = 33;
+      else if (id === "speed45") deck.speed = 45;
+      else if (id === "quartz") deck.quartz = !deck.quartz;
+      updateLeds();
+      emitState();
+    };
     const rayAt = (event: PointerEvent): Ray => {
       const rect = canvas.getBoundingClientRect();
       return screenRay(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height, camera.viewProjection, camera.worldPosition);
     };
-    type Hit = { kind: "tonearm" | "pitch" | "startStop" | "other"; t: number; inst?: InstanceState };
+    type Hit = { kind: "tonearm" | "pitch" | "button" | "other"; t: number; inst?: InstanceState; button?: DeckButtonId };
     // Bounding boxes of the chassis swallow the small parts, so interactive hits win
     // whenever the ray touches one; plain geometry is only reported when nothing else is.
     const pick = (ray: Ray, interactiveOnly: boolean): Hit | undefined => {
@@ -880,9 +922,9 @@ export function startViewer(
           }
         }
       }
-      if (startStop) {
-        const t = raySphere(ray, startStop.center, startStop.radius);
-        if (t !== null && (!best || t < best.t)) best = { kind: "startStop", t };
+      for (const b of buttons) {
+        const t = rayLocalBox(ray, identity, b.bounds.min, b.bounds.max, 0.004 * scale);
+        if (t !== null && (!best || t < best.t)) best = { kind: "button", t, button: b.id };
       }
       return best ?? bestOther;
     };
@@ -989,7 +1031,7 @@ export function startViewer(
         (window as unknown as { __lastPick?: unknown }).__lastPick = { kind: hit.kind, name: hit.inst?.name, mesh: hit.inst?.meshIndex, file: Array.from(file).map((v) => +v.toFixed(4)), plate };
       }
       if (hit?.kind === "tonearm") toggleArmImpl!();
-      else if (hit?.kind === "startStop") togglePlayImpl!();
+      else if (hit?.kind === "button" && hit.button) pressButton(hit.button);
     };
     canvas.addEventListener("pointerdown", onPointerDown, { capture: true });
     canvas.addEventListener("pointermove", onPointerMove, { capture: true });
@@ -1028,7 +1070,14 @@ export function startViewer(
 
       // Motor: ease toward the target speed (direct drive spins up fast, coasts down slower).
       if (settings.spin !== deck.running) { deck.running = settings.spin; emitState(); }
-      const targetOmega = deck.running ? (PLATTER_RPM / 60) * Math.PI * 2 * (1 + deck.pitch) : 0;
+      const effectivePitch = deck.quartz ? 0 : deck.pitch;
+      const targetOmega = deck.running ? (deck.speed / 60) * Math.PI * 2 * (1 + effectivePitch) : 0;
+      // Press animation: a quick dip and return for any recently tapped button.
+      for (const b of buttons) {
+        const age = (now - b.pressedAt) / 1000;
+        const depth = age >= 0 && age < PRESS_DURATION ? Math.sin((age / PRESS_DURATION) * Math.PI) * PRESS_DEPTH * scale : 0;
+        sceneUniforms.set({ [`pressMax${b.slot}`]: [...b.bounds.max, depth] });
+      }
       const rate = deck.running ? 6 : 1.4;
       deck.omega += (targetOmega - deck.omega) * Math.min(1, dt * rate);
       if (!deck.running && deck.omega < 0.01) deck.omega = 0;
@@ -1039,11 +1088,15 @@ export function startViewer(
       const nominalOmega = (PLATTER_RPM / 60) * Math.PI * 2;
       const stylusOnRecord = deck.armDown && !armTweens.busy;
       if (audioStateDirty) { audioStateDirty = false; emitState(); }
+      // The stylus follows the groove at the platter's speed: real records take ~20 min per side.
+      if (stylusOnRecord && deck.omega > 0) {
+        const next = Math.min(1, progress + (dt * (deck.omega / nominalOmega)) / SIDE_SECONDS);
+        if (Math.abs(next - progress) > 0.001) { progress = next; emitState(); } else progress = next;
+      }
       if (audio?.enabled) {
         audio.setNeedleDown(stylusOnRecord);
         audio.setRate(deck.omega / nominalOmega);
-        const next = audio.update(dt);
-        if (Math.abs(next - progress) > 0.002) { progress = next; emitState(); } else progress = next;
+        audio.update(dt);
       }
 
       // Tonearm choreography, plus the slow creep toward the run-out while playing.
@@ -1052,7 +1105,7 @@ export function startViewer(
         applyArmPose();
         for (const inst of armInstances) dirtyStatic.add(inst);
         if (!armTweens.busy) emitState();
-      } else if (stylusOnRecord && audio?.enabled) {
+      } else if (stylusOnRecord) {
         const yaw = armYawAt(progress);
         if (Math.abs(yaw - deck.armValues.yaw) > 1e-5) {
           deck.armValues.yaw = yaw;

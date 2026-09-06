@@ -452,15 +452,12 @@
   overflow: hidden;
 }
 .mobileStage {
-  position: relative;
-  flex: none;
-  height: 62dvh;
-  min-height: 320px;
+  position: absolute;
+  inset: 0;
   background: #ececec;
 }
 @media (min-width: 821px) {
-  .mobileStage { height: 72dvh; }
-  .cover { width: 140px; height: 140px; }
+  .cover { width: 150px; height: 150px; }
 }
 .mobileStage .canvas {
   cursor: default;
@@ -489,15 +486,17 @@
   overflow: hidden;
 }
 .album {
-  flex: 1;
-  overflow: hidden;
-  padding: 8px 20px calc(24px + env(safe-area-inset-bottom));
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 20px calc(28px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 18px;
+  gap: 16px;
   text-align: center;
+  pointer-events: none; /* floats over the scene; gestures go through to the deck */
 }
 .albumHeader {
   display: flex;
@@ -505,8 +504,8 @@
   gap: 16px;
 }
 .cover {
-  width: min(168px, 34dvh);
-  height: min(168px, 34dvh);
+  width: min(168px, 24dvh);
+  height: min(168px, 24dvh);
   border-radius: 14px;
   object-fit: cover;
   flex: none;

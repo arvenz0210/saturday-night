@@ -102,3 +102,12 @@ gestos sobre la escena (brazo, START/STOP, pitch) siguen activos. La cámara se 
 dedo sobre la mesa (fuera de la bandeja) o con dos dedos (pinza = zoom, giro = yaw).
 El reposabrazos se oculta mientras el brazo está sobre el disco, y los LED azules solo se
 encienden con el motor en marcha.
+
+## Botones físicos
+
+START/STOP, 33, 45 y QUARTZ son cajas en el espacio de la escena (`controls.buttons` en
+`lib/models.ts`). Al tocarlas la geometría dentro de la caja se hunde ~1 mm (animación de
+pulsación en el vertex shader) y sus LED siguen el estado: 33/45 seleccionan la velocidad
+nominal del plato (el audio sube a 45 rpm como en un disco real), QUARTZ bloquea el pitch
+a 0 % (LED encendido) hasta volver a pulsarlo. El brazo avanza hacia el centro al ritmo del
+plato como en una cara real (~20 min de surco).

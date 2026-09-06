@@ -31,6 +31,30 @@ struct Scene {
   hideBoxMax: vec3f,
   hideBox2Min: vec3f,
   hideBox2Max: vec3f,
+  /** Button boxes A..D (xyz) — Max.w carries the current press depth in world units. */
+  pressMinA: vec4f,
+  pressMaxA: vec4f,
+  pressMinB: vec4f,
+  pressMaxB: vec4f,
+  pressMinC: vec4f,
+  pressMaxC: vec4f,
+  pressMinD: vec4f,
+  pressMaxD: vec4f,
+  /** LED brightness multiplier per button box (A..D). */
+  ledStates: vec4f,
+}
+
+fn insideBox(p: vec3f, lo: vec4f, hi: vec4f) -> bool {
+  return all(p >= lo.xyz) && all(p <= hi.xyz);
+}
+
+/** Which button box (0..3) contains p, or -1. */
+fn buttonIndex(p: vec3f) -> i32 {
+  if (insideBox(p, scene.pressMinA, scene.pressMaxA)) { return 0; }
+  if (insideBox(p, scene.pressMinB, scene.pressMaxB)) { return 1; }
+  if (insideBox(p, scene.pressMinC, scene.pressMaxC)) { return 2; }
+  if (insideBox(p, scene.pressMinD, scene.pressMaxD)) { return 3; }
+  return -1;
 }
 
 struct Material {
@@ -95,7 +119,13 @@ struct VertexOut {
   @location(3) tangent: vec4f,
 ) -> VertexOut {
   var out: VertexOut;
-  let world = model.model * vec4f(position, 1.0);
+  var world = model.model * vec4f(position, 1.0);
+  // Press animation: geometry inside a button box dips by that box's current depth.
+  let button = buttonIndex(world.xyz);
+  if (button == 0) { world.y -= scene.pressMaxA.w; }
+  else if (button == 1) { world.y -= scene.pressMaxB.w; }
+  else if (button == 2) { world.y -= scene.pressMaxC.w; }
+  else if (button == 3) { world.y -= scene.pressMaxD.w; }
   out.position = scene.viewProjection * world;
   out.worldPosition = world.xyz;
   out.worldNormal = normalize((model.normalMatrix * vec4f(normal, 0.0)).xyz);
@@ -229,10 +259,15 @@ fn sampleEnvIrradiance(dir: vec3f) -> vec3f {
     emissive *= textureSample(emissiveTex, materialSampler, in.uv).rgb;
   }
   if ((flags & IS_LED) != 0u) {
-    // Unpowered LED: dark smoked plastic instead of the lit color.
-    emissive *= scene.ledPower;
-    baseColor = vec4f(mix(vec3f(0.03, 0.03, 0.035), baseColor.rgb, scene.ledPower), baseColor.a);
-    roughness = mix(0.35, roughness, scene.ledPower);
+    // Unpowered LED: dark smoked plastic instead of the lit color. Per-button LEDs follow their state.
+    var power = scene.ledPower;
+    let button = buttonIndex(in.worldPosition);
+    if (button == 1) { power *= scene.ledStates.y; }
+    else if (button == 2) { power *= scene.ledStates.z; }
+    else if (button == 3) { power *= scene.ledStates.w; }
+    emissive *= power;
+    baseColor = vec4f(mix(vec3f(0.03, 0.03, 0.035), baseColor.rgb, power), baseColor.a);
+    roughness = mix(0.35, roughness, power);
   }
 
   // --- Lighting -----------------------------------------------------------------
