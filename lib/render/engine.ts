@@ -101,6 +101,7 @@ export interface ViewerState {
   qualityLevel: number;
   qualityLevels: number;
   qualityMode: QualityMode;
+  recording: boolean;
 }
 
 export type QualityMode = "auto" | "low" | "medium" | "high";
@@ -127,6 +128,12 @@ export interface ViewerHandle {
   setQualityMode(mode: QualityMode): void;
   /** Plays a user-provided audio file through the deck (call from a user gesture). */
   loadAudioFile(file: File): Promise<void>;
+  /** Starts capturing the canvas (at its backing resolution) plus the deck audio. */
+  startRecording(): void;
+  /** Stops the capture and resolves with the encoded file. */
+  stopRecording(): Promise<{ blob: Blob; extension: string }>;
+  /** Canvas backing size in pixels (what a recording captures). */
+  canvasPixels(): [number, number];
   dispose(): void;
 }
 
@@ -248,6 +255,12 @@ export function startViewer(
   let audio: DeckAudio | undefined;
   let audioStateDirty = false;
   let qualityMode: QualityMode = "auto";
+  let recorder: MediaRecorder | undefined;
+  let recorderChunks: Blob[] = [];
+  let recorderMime = "";
+  let qualityModeBeforeRecording: QualityMode = "auto";
+  let recording = false;
+  let emitStateImpl: (() => void) | undefined;
   let setQualityModeImpl: ((mode: QualityMode) => void) | undefined;
   let loadAudioFileImpl: ((file: File) => Promise<void>) | undefined;
   const cleanups: Array<() => void> = [];
@@ -871,8 +884,9 @@ export function startViewer(
     const emitState = () => callbacks.onState?.({
       playing: deck.running, armDown: deck.armDown, armMoving: armTweens.busy, pitch: deck.pitch,
       audioEnabled: !!audio?.enabled, progress, speed: deck.speed, quartz: deck.quartz,
-      qualityLevel, qualityLevels: QUALITY_LADDER.length, qualityMode,
+      qualityLevel, qualityLevels: QUALITY_LADDER.length, qualityMode, recording,
     });
+    emitStateImpl = emitState;
     setQualityModeImpl = (mode) => {
       qualityMode = mode;
       const fixed = mode === "low" ? 1 : mode === "medium" ? 3 : mode === "high" ? QUALITY_LADDER.length - 1 : undefined;
@@ -1342,6 +1356,48 @@ export function startViewer(
     },
     async loadAudioFile(file) {
       await loadAudioFileImpl?.(file);
+    },
+    startRecording() {
+      if (recorder) return;
+      const stream = canvas.captureStream(60);
+      const audioStream = audio?.recordingStream();
+      if (audioStream) for (const track of audioStream.getAudioTracks()) stream.addTrack(track);
+      const candidates = [
+        "video/mp4;codecs=avc1.640033,mp4a.40.2",
+        "video/mp4;codecs=avc1,mp4a.40.2",
+        "video/mp4",
+        "video/webm;codecs=vp9,opus",
+        "video/webm;codecs=vp8,opus",
+        "video/webm",
+      ];
+      recorderMime = candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
+      recorderChunks = [];
+      recorder = new MediaRecorder(stream, { mimeType: recorderMime || undefined, videoBitsPerSecond: 80_000_000, audioBitsPerSecond: 256_000 });
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) recorderChunks.push(e.data); };
+      qualityModeBeforeRecording = qualityMode;
+      setQualityModeImpl?.("high");
+      recorder.start(1000);
+      recording = true;
+      emitStateImpl?.();
+      console.info(`[viewer] recording ${canvas.width}x${canvas.height} as ${recorderMime || "default"}`);
+    },
+    stopRecording() {
+      return new Promise((resolve) => {
+        const active = recorder;
+        if (!active) { resolve({ blob: new Blob(), extension: "webm" }); return; }
+        active.onstop = () => {
+          const blob = new Blob(recorderChunks, { type: recorderMime || active.mimeType });
+          recorder = undefined;
+          recording = false;
+          setQualityModeImpl?.(qualityModeBeforeRecording);
+          emitStateImpl?.();
+          resolve({ blob, extension: (recorderMime || active.mimeType).includes("mp4") ? "mp4" : "webm" });
+        };
+        active.stop();
+      });
+    },
+    canvasPixels() {
+      return [canvas.width, canvas.height];
     },
     dispose() {
       disposed = true;

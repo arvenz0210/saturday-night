@@ -13,6 +13,7 @@ export class DeckAudio {
   private source?: AudioBufferSourceNode;
   private gain?: GainNode;
   private analyser?: AnalyserNode;
+  private streamDestination?: MediaStreamAudioDestinationNode;
   private needleDown = false;
   private rate = 0;
   private endedFired = false;
@@ -112,6 +113,16 @@ export class DeckAudio {
       }
     }
     return this.duration > 0 ? this.position / this.duration : 0;
+  }
+
+  /** Audio as a MediaStream (post-gain), for recordings. */
+  recordingStream(): MediaStream | undefined {
+    if (!this.context || !this.gain) return undefined;
+    if (!this.streamDestination) {
+      this.streamDestination = this.context.createMediaStreamDestination();
+      this.gain.connect(this.streamDestination);
+    }
+    return this.streamDestination.stream;
   }
 
   /** Frequency magnitudes 0..255 for a visualizer; false when audio is not enabled. */

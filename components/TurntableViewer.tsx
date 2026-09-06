@@ -65,7 +65,9 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
   const [info, setInfo] = useState<ViewerInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fps, setFps] = useState(0);
-  const [deck, setDeck] = useState<ViewerState>({ playing: true, armDown: true, armMoving: false, pitch: 0, audioEnabled: false, progress: 0, speed: 33, quartz: false, qualityLevel: 0, qualityLevels: 6, qualityMode: "auto" });
+  const [deck, setDeck] = useState<ViewerState>({ playing: true, armDown: true, armMoving: false, pitch: 0, audioEnabled: false, progress: 0, speed: 33, quartz: false, qualityLevel: 0, qualityLevels: 6, qualityMode: "auto", recording: false });
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [canvasPx, setCanvasPx] = useState<[number, number]>([0, 0]);
   const [menuOpen, setMenuOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const spectrumRef = useRef<HTMLCanvasElement>(null);
@@ -121,6 +123,36 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Recording clock + canvas size readout while the menu is open.
+  useEffect(() => {
+    if (!menuOpen && !deck.recording) return;
+    const tick = () => {
+      const px = handleRef.current?.canvasPixels();
+      if (px) setCanvasPx(px);
+      if (deck.recording) setRecordSeconds((s) => s + 1);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [menuOpen, deck.recording]);
+
+  const toggleRecording = async () => {
+    const handle = handleRef.current;
+    if (!handle) return;
+    if (deck.recording) {
+      const { blob, extension } = await handle.stopRecording();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `saturday-night-${canvasPx[0]}x${canvasPx[1]}.${extension}`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      setRecordSeconds(0);
+    } else {
+      handle.startRecording();
+    }
+  };
 
   // Spectrum visualizer: pulls analyser data from the engine every frame.
   useEffect(() => {
@@ -233,6 +265,15 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
                 )}
               </div>
               <div className={styles.menuHint}>{deck.audioEnabled ? "Playing through the stylus" : "The demo track is not on the public site; load your own audio file."}</div>
+              <div className={styles.menuLabel}>Record</div>
+              <div className={styles.menuRow}>
+                <button type="button" className={deck.recording ? styles.menuBtnActive : styles.menuBtn} onClick={() => void toggleRecording()}>
+                  {deck.recording ? `⏹ Stop & save (${recordSeconds}s)` : "⏺ Record clip"}
+                </button>
+              </div>
+              <div className={styles.menuHint}>
+                Captures {canvasPx[0]}×{canvasPx[1]} px with the deck audio. For 4K, size the window to 1920×1080 points on a Retina display.
+              </div>
               <input ref={fileRef} type="file" accept="audio/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleRef.current?.loadAudioFile(f); e.target.value = ""; }} />
             </div>
           )}
