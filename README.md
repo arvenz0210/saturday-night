@@ -126,3 +126,11 @@ npx @gltf-transform/cli@4 resize /tmp/t3.glb /tmp/t4.glb --width 1024 --height 1
 npx @gltf-transform/cli@4 webp /tmp/t4.glb /tmp/t5.glb --quality 90
 npx @gltf-transform/cli@4 quantize /tmp/t5.glb public/models/turntable.mobile.glb --quantize-position 14 --quantize-normal 8 --quantize-texcoord 12
 ```
+
+## Calidad adaptativa
+
+El motor mide los fps reales y sube o baja por una escalera de calidad (escala de render del
+target HDR 0.5→1.0 con reescalado en post, taps de sombra 4/8/16, bloom on/off). Baja un
+escalón si cae de 30 fps y sube si supera 54 fps con margen; un nivel que falló no se
+reintenta durante 20 s. El escritorio arranca arriba del todo; el móvil en el nivel medio y
+sube hasta 2× de DPR si el teléfono lo aguanta. La consola registra cada cambio (`[viewer] quality level`).

@@ -136,6 +136,21 @@ const SHADOW_SIZE_HIGH = 2048;
 const SHADOW_SIZE_MOBILE = 1024;
 const BACKGROUND: [number, number, number] = [0.012, 0.012, 0.015];
 const PLATTER_RPM = 33.33;
+/**
+ * Adaptive quality ladder, cheapest first. Render scale is applied to the HDR target
+ * (upscaled in post), taps to the soft shadow, bloom toggles its three passes.
+ */
+const QUALITY_LADDER = [
+  { scale: 0.5, taps: 4, bloom: false },
+  { scale: 0.6, taps: 4, bloom: false },
+  { scale: 0.7, taps: 8, bloom: false },
+  { scale: 0.85, taps: 8, bloom: true },
+  { scale: 1.0, taps: 8, bloom: true },
+  { scale: 1.0, taps: 16, bloom: true },
+];
+const FPS_FLOOR = 30; // step down below this
+const FPS_HEADROOM = 54; // step up above this
+
 /** Press feedback: the button's own LED blinks off briefly. */
 const PRESS_BLINK = 0.14; // seconds
 /** A full LP side: the stylus travels lead-in to run-out in about 20 minutes at 33⅓. */
@@ -292,9 +307,14 @@ export function startViewer(
     if (disposed) return;
 
     // --- Render targets -------------------------------------------------------------------------------
-    // Phones: cap the backing resolution; the HDR + MSAA pipeline is fill-rate bound.
-    const canvasSurface = surface(ctx, canvas, { dpr: mobileQuality ? [1, 1.25] : [1, 2] });
-    const [w0, h0] = canvasSurface.size;
+    // The HDR target renders at `renderScale` of the canvas and is upscaled in post; the
+    // adaptive controller moves that scale (plus shadow taps and bloom) to hold the frame rate.
+    const canvasSurface = surface(ctx, canvas, { dpr: [1, 2] });
+    let qualityLevel = mobileQuality ? 2 : QUALITY_LADDER.length - 1;
+    let renderScale = QUALITY_LADDER[qualityLevel].scale;
+    let bloomEnabled = QUALITY_LADDER[qualityLevel].bloom;
+    const scaled = (w: number, h: number): [number, number] => [Math.max(1, Math.round(w * renderScale)), Math.max(1, Math.round(h * renderScale))];
+    const [w0, h0] = scaled(...canvasSurface.size);
     // Table theme clears to alpha 0 so post composites the white background and the caught shadow.
     const clearColor: [number, number, number, number] = table ? [1, 1, 1, 0] : [...BACKGROUND, 1];
     const sceneTarget = target(ctx, { size: [w0, h0], format: "rgba16float", depth: "depth24plus", msaa: true, clearColor, label: "scene" });
@@ -334,7 +354,7 @@ export function startViewer(
       pressMinC: [0, 0, 0, 0], pressMaxC: [0, 0, 0, 0],
       pressMinD: [0, 0, 0, 0], pressMaxD: [0, 0, 0, 0],
       ledStates: [1, 1, 0, 0],
-      shadowTaps: mobileQuality ? 8 : 16,
+      shadowTaps: QUALITY_LADDER[qualityLevel].taps,
     });
     const lightUniforms = uniforms(ctx, { viewProjection: new Float32Array(16) });
     const sharedSceneBindings = {
@@ -680,7 +700,7 @@ export function startViewer(
 
     const postParams = (aspect: number) => ({
       exposure: settings.exposure,
-      bloomStrength: mobileQuality ? 0 : settings.bloom,
+      bloomStrength: bloomEnabled ? settings.bloom : 0,
       vignette: table ? 0 : 0.35,
       aspect,
       background: [0.925, 0.925, 0.925],
@@ -756,17 +776,30 @@ export function startViewer(
     });
 
     // --- Resize ----------------------------------------------------------------------------------------------
-    cleanups.push(canvasSurface.onResize(({ width, height }) => {
-      sceneTarget.resize([width, height]);
-      const q = quarter(width, height);
+    const resizeTargets = (width: number, height: number) => {
+      const [w, h] = scaled(width, height);
+      sceneTarget.resize([w, h]);
+      const q = quarter(w, h);
       bloomBright.resize(q);
       bloomA.resize(q);
       bloomB.resize(q);
-      camera.set({ aspect: width / height });
       bright.set({ params: { texel: [...sceneTarget.texelSize], threshold: 1.0, knee: 0.6 } });
       blurH.set({ params: { direction: [bloomBright.texelSize[0], 0] } });
       blurV.set({ params: { direction: [0, bloomBright.texelSize[1]] } });
       post.set({ params: postParams(width / height) });
+    };
+    const applyQuality = (level: number) => {
+      qualityLevel = Math.max(0, Math.min(QUALITY_LADDER.length - 1, level));
+      const q = QUALITY_LADDER[qualityLevel];
+      renderScale = q.scale;
+      bloomEnabled = q.bloom;
+      sceneUniforms.set({ shadowTaps: q.taps });
+      resizeTargets(...canvasSurface.size);
+      console.info(`[viewer] quality level ${qualityLevel}: scale ${q.scale}, ${q.taps} shadow taps, bloom ${q.bloom ? "on" : "off"}`);
+    };
+    cleanups.push(canvasSurface.onResize(({ width, height }) => {
+      resizeTargets(width, height);
+      camera.set({ aspect: width / height });
       if (fitCamera) fitCamera(width / height);
     }));
 
@@ -1065,6 +1098,9 @@ export function startViewer(
     let fpsAccumulator = 0;
     let fpsFrames = 0;
     let fpsLast = performance.now();
+    let qualitySettleUntil = performance.now() + 2500; // ignore warm-up frames
+    let qualityCeiling = QUALITY_LADDER.length - 1;
+    let qualityCeilingUntil = 0;
     const cameraDistance = vec3.create();
     const blended = drawables.filter((d) => d.blend);
 
@@ -1173,21 +1209,36 @@ export function startViewer(
         for (const d of drawables) if (!d.blend && !d.hidden) pass.draw(d.main);
         for (const d of blended) if (!d.hidden) pass.draw(d.main);
       });
-      if (!mobileQuality) {
+      if (bloomEnabled) {
         f.pass(bloomBright, bright);
         f.pass(bloomA, blurH);
         f.pass(bloomB, blurV);
       }
       f.pass(canvasSurface, post);
 
-      // FPS (reported twice a second)
+      // FPS (reported twice a second) + adaptive quality, measured only while visible.
       fpsFrames++;
       fpsAccumulator += now - fpsLast;
       fpsLast = now;
       if (fpsAccumulator >= 500) {
-        callbacks.onStats?.({ fps: (fpsFrames * 1000) / fpsAccumulator });
+        const fps = (fpsFrames * 1000) / fpsAccumulator;
+        callbacks.onStats?.({ fps });
         fpsAccumulator = 0;
         fpsFrames = 0;
+        if (document.visibilityState === "visible" && now > qualitySettleUntil) {
+          if (fps < FPS_FLOOR && qualityLevel > 0) {
+            qualityCeiling = qualityLevel - 1; // this level was too much: do not retry it for a while
+            qualityCeilingUntil = now + 20000;
+            applyQuality(qualityLevel - 1);
+            qualitySettleUntil = now + 1500;
+          } else if (fps > FPS_HEADROOM && qualityLevel < QUALITY_LADDER.length - 1) {
+            if (now > qualityCeilingUntil) qualityCeiling = QUALITY_LADDER.length - 1;
+            if (qualityLevel < qualityCeiling) {
+              applyQuality(qualityLevel + 1);
+              qualitySettleUntil = now + 2500;
+            }
+          }
+        }
       }
     }, mobileQuality ? { fps: 60 } : undefined);
 
