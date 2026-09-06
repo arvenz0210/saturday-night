@@ -757,8 +757,9 @@ export function startViewer(
       distance: { min: radius * 0.6, max: radius * 12 },
       pitch: { min: 0.02, max: 1.45 },
     });
-    // The album floats over the lower part of the screen: aim below the deck so it sits high.
-    const tableFocus: [number, number, number] = [0, height * 0.5 - radius * 0.55, 0];
+    // The album floats over the lower part of the screen: on portrait aim well below the deck so
+    // it sits high; on landscape there is room, keep the deck close to the center.
+    const tableFocusFor = (aspect: number): [number, number, number] => [0, height * 0.5 - radius * (aspect < 1 ? 0.55 : 0.3), 0];
     /** The resting pose for the current viewport (table theme fits the deck to the width). */
     const restingPose = (aspect: number) => {
       if (!table) return { yaw: model.camera.yaw, pitch: model.camera.pitch, distance: radius * model.camera.distance, target: focus };
@@ -770,7 +771,7 @@ export function startViewer(
       // Portrait screens are width-bound and show the deck at a shallow angle: give them more room.
       const portrait = aspect < 1 ? 1.14 : 1;
       const distance = (radius * 0.92 * pose.fit * portrait) / Math.sin(half);
-      return { yaw: pose.yaw, pitch: pose.pitch, distance, target: tableFocus };
+      return { yaw: pose.yaw, pitch: pose.pitch, distance, target: tableFocusFor(aspect) };
     };
     fitCamera = table ? (aspect) => controls!.set(restingPose(aspect)) : undefined;
     const applyCameraPose = () => controls!.set(restingPose(camera.aspect));
