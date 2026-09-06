@@ -182,9 +182,9 @@ export const MODELS: Record<string, ModelSpec> = {
     label: { image: "/audio/cover.jpg", diameter: 0.1, hole: 0.0075 },
     controls: {
       buttons: [
-        { id: "startStop", min: [-0.218, 0.086, 0.13], max: [-0.172, 0.1, 0.17] }, // round START/STOP, front-left
-        { id: "speed33", min: [-0.182, 0.086, 0.152], max: [-0.145, 0.1, 0.178] },  // left bar
-        { id: "speed45", min: [-0.145, 0.086, 0.152], max: [-0.108, 0.1, 0.178] },  // right bar
+        { id: "startStop", min: [-0.218, 0.084, 0.128], max: [-0.1705, 0.1, 0.172] }, // round START/STOP + ring, front-left
+        { id: "speed33", min: [-0.1775, 0.084, 0.144], max: [-0.1500, 0.1, 0.172] },   // left bar (x -0.175..-0.151)
+        { id: "speed45", min: [-0.1500, 0.084, 0.144], max: [-0.1225, 0.1, 0.172] },   // right bar (x -0.149..-0.125)
         { id: "quartz", min: [0.138, 0.086, 0.076], max: [0.192, 0.112, 0.11] },    // pitch lock by the fader (+ its LED)
       ],
       // Fader knob rides the slot on the right edge; toward the front = faster.
