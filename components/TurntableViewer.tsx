@@ -65,7 +65,9 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
   const [info, setInfo] = useState<ViewerInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fps, setFps] = useState(0);
-  const [deck, setDeck] = useState<ViewerState>({ playing: true, armDown: true, armMoving: false, pitch: 0, audioEnabled: false, progress: 0, speed: 33, quartz: false });
+  const [deck, setDeck] = useState<ViewerState>({ playing: true, armDown: true, armMoving: false, pitch: 0, audioEnabled: false, progress: 0, speed: 33, quartz: false, qualityLevel: 0, qualityLevels: 6, qualityMode: "auto" });
+  const [menuOpen, setMenuOpen] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const spectrumRef = useRef<HTMLCanvasElement>(null);
   const [hudHidden, setHudHidden] = useState(false);
   const mobile = useMobileLayout();
@@ -192,9 +194,48 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
         </div>
 
         <section className={styles.album} aria-label="Álbum">
-          {cover && <img className={styles.cover} src={cover} alt="" width={168} height={168} />}
+          {cover && <img className={styles.cover} src={cover} alt="" width={96} height={96} />}
           <h1 className={styles.albumTitle}>{model.audio?.title ?? model.title}</h1>
         </section>
+
+        <div className={styles.menuWrap}>
+          <button type="button" className={styles.menuPill} onClick={() => setMenuOpen((v) => !v)} aria-expanded={menuOpen} aria-label="Calidad y audio">
+            <span className={styles.qualityBar} aria-hidden="true">
+              {Array.from({ length: deck.qualityLevels }, (_, i) => (
+                <span key={i} className={i <= deck.qualityLevel ? styles.qualitySegOn : styles.qualitySeg} />
+              ))}
+            </span>
+            <span className={styles.menuPillText}>
+              {deck.qualityMode === "auto" ? "Auto" : deck.qualityMode === "low" ? "Baja" : deck.qualityMode === "medium" ? "Media" : "Alta"}
+            </span>
+          </button>
+          {menuOpen && (
+            <div className={styles.menu} role="menu">
+              <div className={styles.menuLabel}>Calidad</div>
+              <div className={styles.menuRow}>
+                {(["auto", "low", "medium", "high"] as const).map((mode) => (
+                  <button key={mode} type="button" role="menuitemradio" aria-checked={deck.qualityMode === mode}
+                    className={deck.qualityMode === mode ? styles.menuBtnActive : styles.menuBtn}
+                    onClick={() => handleRef.current?.setQualityMode(mode)}>
+                    {mode === "auto" ? "Auto" : mode === "low" ? "Baja" : mode === "medium" ? "Media" : "Alta"}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.menuHint}>Nivel {deck.qualityLevel + 1}/{deck.qualityLevels} · Auto mantiene ≥30 fps</div>
+              <div className={styles.menuLabel}>Audio</div>
+              <div className={styles.menuRow}>
+                <button type="button" className={styles.menuBtn} onClick={() => fileRef.current?.click()}>
+                  🎵 Cargar canción…
+                </button>
+                {!deck.audioEnabled && model.audio && (
+                  <button type="button" className={styles.menuBtn} onClick={() => handleRef.current?.enableAudio()}>🔊 Sonido</button>
+                )}
+              </div>
+              <div className={styles.menuHint}>{deck.audioEnabled ? "Sonando por la púa" : "La canción de demo no está en la web pública; carga un archivo de audio propio."}</div>
+              <input ref={fileRef} type="file" accept="audio/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleRef.current?.loadAudioFile(f); e.target.value = ""; }} />
+            </div>
+          )}
+        </div>
       </div>
     );
   }

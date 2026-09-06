@@ -97,7 +97,13 @@ export interface ViewerState {
   speed: 33 | 45;
   /** Quartz lock: pitch forced to 0 %. */
   quartz: boolean;
+  /** Current rung of the quality ladder (0 = lowest) and how it is chosen. */
+  qualityLevel: number;
+  qualityLevels: number;
+  qualityMode: QualityMode;
 }
+
+export type QualityMode = "auto" | "low" | "medium" | "high";
 
 export interface ViewerCallbacks {
   onProgress(progress: ViewerProgress): void;
@@ -117,6 +123,10 @@ export interface ViewerHandle {
   enableAudio(): Promise<void>;
   /** Fills `out` with analyser magnitudes; false until audio is enabled. */
   spectrum(out: Uint8Array<ArrayBuffer>): boolean;
+  /** Fixes the quality rung or returns to adaptive mode. */
+  setQualityMode(mode: QualityMode): void;
+  /** Plays a user-provided audio file through the deck (call from a user gesture). */
+  loadAudioFile(file: File): Promise<void>;
   dispose(): void;
 }
 
@@ -237,6 +247,9 @@ export function startViewer(
   let setPitchImpl: ((pitch: number) => void) | undefined;
   let audio: DeckAudio | undefined;
   let audioStateDirty = false;
+  let qualityMode: QualityMode = "auto";
+  let setQualityModeImpl: ((mode: QualityMode) => void) | undefined;
+  let loadAudioFileImpl: ((file: File) => Promise<void>) | undefined;
   const cleanups: Array<() => void> = [];
 
   const run = async () => {
@@ -801,7 +814,9 @@ export function startViewer(
       sceneUniforms.set({ shadowTaps: q.taps });
       resizeTargets(...canvasSurface.size);
       console.info(`[viewer] quality level ${qualityLevel}: scale ${q.scale}, ${q.taps} shadow taps, bloom ${q.bloom ? "on" : "off"}`);
+      qualityStateDirty = true;
     };
+    let qualityStateDirty = false;
     cleanups.push(canvasSurface.onResize(({ width, height }) => {
       resizeTargets(width, height);
       camera.set({ aspect: width / height });
@@ -852,7 +867,24 @@ export function startViewer(
     const pitchInstances = instances.filter((i) => i.role === "pitch" && pitchSpecMoves(i.meshIndex));
     const pitchAxis = pitchSpec ? vec3.normalize(vec3.create(...pitchSpec.axis)) : vec3.create(0, 0, 1);
     let progress = 0;
-    const emitState = () => callbacks.onState?.({ playing: deck.running, armDown: deck.armDown, armMoving: armTweens.busy, pitch: deck.pitch, audioEnabled: !!audio?.enabled, progress, speed: deck.speed, quartz: deck.quartz });
+    const emitState = () => callbacks.onState?.({
+      playing: deck.running, armDown: deck.armDown, armMoving: armTweens.busy, pitch: deck.pitch,
+      audioEnabled: !!audio?.enabled, progress, speed: deck.speed, quartz: deck.quartz,
+      qualityLevel, qualityLevels: QUALITY_LADDER.length, qualityMode,
+    });
+    setQualityModeImpl = (mode) => {
+      qualityMode = mode;
+      const fixed = mode === "low" ? 1 : mode === "medium" ? 3 : mode === "high" ? QUALITY_LADDER.length - 1 : undefined;
+      if (fixed !== undefined) applyQuality(fixed);
+      emitState();
+    };
+    loadAudioFileImpl = async (file) => {
+      audio?.dispose();
+      audio = new DeckAudio({ url: URL.createObjectURL(file), onEnded: () => console.info("[viewer] track finished") });
+      await audio.enable();
+      progress = 0;
+      audioStateDirty = true;
+    };
     const applyArmPose = () => {
       const pose = armPose(deck.armValues.yaw, deck.armValues.tilt);
       for (const inst of armInstances) inst.pose = pose;
@@ -1242,7 +1274,8 @@ export function startViewer(
         callbacks.onStats?.({ fps });
         fpsAccumulator = 0;
         fpsFrames = 0;
-        if (document.visibilityState === "visible" && now > qualitySettleUntil) {
+        if (qualityStateDirty) { qualityStateDirty = false; emitState(); }
+        if (qualityMode === "auto" && document.visibilityState === "visible" && now > qualitySettleUntil) {
           if (fps < FPS_FLOOR && qualityLevel > 0) {
             qualityCeiling = qualityLevel - 1; // this level was too much: do not retry it for a while
             qualityCeilingUntil = now + 20000;
@@ -1302,6 +1335,12 @@ export function startViewer(
     },
     spectrum(out) {
       return audio?.spectrum(out) ?? false;
+    },
+    setQualityMode(mode) {
+      setQualityModeImpl?.(mode);
+    },
+    async loadAudioFile(file) {
+      await loadAudioFileImpl?.(file);
     },
     dispose() {
       disposed = true;
