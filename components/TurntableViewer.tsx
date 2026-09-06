@@ -40,9 +40,13 @@ function useMobileLayout(): boolean | undefined {
   return mobile;
 }
 
-/** Phones and tablets: coarse pointer without hover. */
+/** Phones and tablets: coarse pointer without hover. `?quality=mobile|high` overrides. */
 function isTouchDevice(): boolean {
-  return typeof window !== "undefined" && window.matchMedia("(pointer: coarse) and (hover: none)").matches;
+  if (typeof window === "undefined") return false;
+  const forced = new URLSearchParams(window.location.search).get("quality");
+  if (forced === "mobile") return true;
+  if (forced === "high") return false;
+  return window.matchMedia("(pointer: coarse) and (hover: none)").matches;
 }
 
 function formatBytes(n: number): string {

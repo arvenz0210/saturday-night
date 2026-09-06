@@ -270,7 +270,7 @@ export function startViewer(
       mark(`parsed:${label}`);
       return parsed;
     };
-    const asset = await loadAsset(model.url, model.title);
+    const asset = await loadAsset(mobileQuality && model.mobileUrl ? model.mobileUrl : model.url, model.title);
     // Carve arm parts out of fused chassis meshes before anything else looks at the mesh list.
     const splitArmMeshes: number[] = [];
     for (const split of model.tonearm?.splitMeshes ?? []) {
@@ -280,7 +280,7 @@ export function startViewer(
     const armMeshes = new Set([...(model.tonearm?.meshes ?? []), ...splitArmMeshes]);
     const attachmentAssets: GlbAsset[] = [];
     for (const spec of attachmentSpecs) {
-      attachmentAssets.push(await loadAsset(spec.url, spec.credit.source, { ignoreNodeTransforms: spec.ignoreNodeTransforms }));
+      attachmentAssets.push(await loadAsset(mobileQuality && spec.mobileUrl ? spec.mobileUrl : spec.url, spec.credit.source, { ignoreNodeTransforms: spec.ignoreNodeTransforms }));
     }
     if (disposed) return;
 
@@ -293,7 +293,7 @@ export function startViewer(
 
     // --- Render targets -------------------------------------------------------------------------------
     // Phones: cap the backing resolution; the HDR + MSAA pipeline is fill-rate bound.
-    const canvasSurface = surface(ctx, canvas, { dpr: mobileQuality ? [1, 1.5] : [1, 2] });
+    const canvasSurface = surface(ctx, canvas, { dpr: mobileQuality ? [1, 1.25] : [1, 2] });
     const [w0, h0] = canvasSurface.size;
     // Table theme clears to alpha 0 so post composites the white background and the caught shadow.
     const clearColor: [number, number, number, number] = table ? [1, 1, 1, 0] : [...BACKGROUND, 1];
@@ -680,7 +680,7 @@ export function startViewer(
 
     const postParams = (aspect: number) => ({
       exposure: settings.exposure,
-      bloomStrength: settings.bloom,
+      bloomStrength: mobileQuality ? 0 : settings.bloom,
       vignette: table ? 0 : 0.35,
       aspect,
       background: [0.925, 0.925, 0.925],
@@ -1173,9 +1173,11 @@ export function startViewer(
         for (const d of drawables) if (!d.blend && !d.hidden) pass.draw(d.main);
         for (const d of blended) if (!d.hidden) pass.draw(d.main);
       });
-      f.pass(bloomBright, bright);
-      f.pass(bloomA, blurH);
-      f.pass(bloomB, blurV);
+      if (!mobileQuality) {
+        f.pass(bloomBright, bright);
+        f.pass(bloomA, blurH);
+        f.pass(bloomB, blurV);
+      }
       f.pass(canvasSurface, post);
 
       // FPS (reported twice a second)

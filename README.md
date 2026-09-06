@@ -111,3 +111,18 @@ geometría) y luego sigue el estado: 33/45 seleccionan la velocidad
 nominal del plato (el audio sube a 45 rpm como en un disco real), QUARTZ bloquea el pitch
 a 0 % (LED encendido) hasta volver a pulsarlo. El brazo avanza hacia el centro al ritmo del
 plato como en una cara real (~20 min de surco).
+
+## Assets para móvil
+
+En teléfonos (puntero táctil) el visor carga `turntable.mobile.glb` y `vinyl.mobile.glb`:
+piezas pequeñas decimadas (≤10k triángulos por malla, `scripts/build-mobile-assets.mjs`),
+placas intactas, texturas a 1k (WebP en la bandeja, PNG en el disco) y vértices cuantizados
+(KHR_mesh_quantization). Además baja el DPR a 1.25, usa shadow map 1024 con 8 taps, omite el
+bloom y limita a 60 fps. Fuerza un modo con `?quality=mobile` o `?quality=high`.
+
+```bash
+node scripts/build-mobile-assets.mjs public/models/turntable.glb /tmp/t3.glb 10000
+npx @gltf-transform/cli@4 resize /tmp/t3.glb /tmp/t4.glb --width 1024 --height 1024
+npx @gltf-transform/cli@4 webp /tmp/t4.glb /tmp/t5.glb --quality 90
+npx @gltf-transform/cli@4 quantize /tmp/t5.glb public/models/turntable.mobile.glb --quantize-position 14 --quantize-normal 8 --quantize-texcoord 12
+```

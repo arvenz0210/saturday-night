@@ -9,6 +9,8 @@ export interface Credit {
 export interface AttachmentSpec {
   id: string;
   url: string;
+  /** Lighter GLB served to phones (decimated mesh, small WebP textures). */
+  mobileUrl?: string;
   credit: Credit;
   /** Axis the attachment's file treats as "up". Defaults to "y". */
   upAxis?: "y" | "z";
@@ -91,6 +93,8 @@ export interface ModelSpec {
   title: string;
   subtitle: string;
   url: string;
+  /** Lighter GLB served to phones (decimated mesh, small WebP textures). */
+  mobileUrl?: string;
   credit: Credit;
   /** Nodes whose names match rotate around the vertical axis when "spin" is on. */
   spinPattern?: RegExp;
@@ -124,6 +128,7 @@ export const MODELS: Record<string, ModelSpec> = {
     title: "Audio-Technica AT-LP120XUSB",
     subtitle: "Bandeja giradisco profesional · Direct drive · Negro",
     url: "/models/turntable.glb",
+    mobileUrl: "/models/turntable.mobile.glb",
     credit: {
       author: "Mateusz Kołakowski",
       source: "Pioneer PLX-1000 Turntable Ltd. (Remastered)",
@@ -140,6 +145,7 @@ export const MODELS: Record<string, ModelSpec> = {
       {
         id: "vinyl",
         url: "/models/vinyl.glb",
+        mobileUrl: "/models/vinyl.mobile.glb",
         credit: {
           author: "AleixoAlonso",
           source: '12" Vinyl Record',
