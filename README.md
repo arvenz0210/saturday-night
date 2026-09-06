@@ -134,3 +134,14 @@ target HDR 0.5→1.0 con reescalado en post, taps de sombra 4/8/16, bloom on/off
 escalón si cae de 30 fps y sube si supera 54 fps con margen; un nivel que falló no se
 reintenta durante 20 s. El escritorio arranca arriba del todo; el móvil en el nivel medio y
 sube hasta 2× de DPR si el teléfono lo aguanta. La consola registra cada cambio (`[viewer] quality level`).
+
+## Despliegue privado (con la canción)
+
+La web pública no incluye el audio ni la carátula (material con derechos). Para uso personal
+existe un segundo proyecto de Vercel, `saturday-night-private`, desplegado directamente desde
+la carpeta local (incluye `public/audio/`, ver `.vercelignore`) y protegido con contraseña
+mediante `proxy.ts` (HTTP Basic, variable `SITE_PASSWORD`). Para actualizarlo:
+
+```bash
+vercel link --yes --project saturday-night-private && vercel --prod && vercel link --yes --project saturday-night
+```
