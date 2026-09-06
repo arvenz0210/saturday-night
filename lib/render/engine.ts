@@ -9,7 +9,7 @@ import { mat4, vec3, type Mat4 } from "wgpu-matrix";
 import { parseGlb, VERTEX_STRIDE_BYTES, VERTEX_STRIDE_FLOATS, type GlbAsset, type GlbMaterial } from "@/lib/gltf/glb";
 import type { AttachmentSpec, DeckButtonId, ModelSpec } from "@/lib/models";
 import { buildEnvironment } from "./environment";
-import { isTap, rayLocalBox, rayPlaneY, screenRay, TweenQueue, type Ray } from "./interaction";
+import { easeInOutCubic, isTap, rayLocalBox, rayPlaneY, screenRay, TweenQueue, type Ray } from "./interaction";
 import { DeckAudio } from "./audio";
 import { Blitter, createImageTexture, createSolidTexture, gltfSamplerDescriptor } from "./textures";
 import pbrShader from "./shaders/pbr.wgsl";
@@ -746,28 +746,33 @@ export function startViewer(
     });
     // The album floats over the lower part of the screen: aim below the deck so it sits high.
     const tableFocus: [number, number, number] = [0, height * 0.5 - radius * 0.55, 0];
-    fitCamera = table
-      ? (aspect) => {
-          // Distance so the deck's bounding sphere fits the narrower field of view.
-          const vHalf = (fov * Math.PI) / 360;
-          const hHalf = Math.atan(Math.tan(vHalf) * aspect);
-          const half = Math.min(vHalf, hHalf);
-          const pose = layout.camera ?? MOBILE_LAYOUT.camera!;
-          // Portrait screens are width-bound and show the deck at a shallow angle: give them more room.
-          const portrait = aspect < 1 ? 1.14 : 1;
-          const distance = (radius * 0.92 * pose.fit * portrait) / Math.sin(half);
-          controls!.set({ yaw: pose.yaw, pitch: pose.pitch, distance, target: tableFocus });
-        }
-      : undefined;
-    const applyCameraPose = () => {
-      if (fitCamera) fitCamera(camera.aspect);
-      else controls!.set({ yaw: model.camera.yaw, pitch: model.camera.pitch, distance: radius * model.camera.distance, target: focus });
+    /** The resting pose for the current viewport (table theme fits the deck to the width). */
+    const restingPose = (aspect: number) => {
+      if (!table) return { yaw: model.camera.yaw, pitch: model.camera.pitch, distance: radius * model.camera.distance, target: focus };
+      // Distance so the deck's bounding sphere fits the narrower field of view.
+      const vHalf = (fov * Math.PI) / 360;
+      const hHalf = Math.atan(Math.tan(vHalf) * aspect);
+      const half = Math.min(vHalf, hHalf);
+      const pose = layout.camera ?? MOBILE_LAYOUT.camera!;
+      // Portrait screens are width-bound and show the deck at a shallow angle: give them more room.
+      const portrait = aspect < 1 ? 1.14 : 1;
+      const distance = (radius * 0.92 * pose.fit * portrait) / Math.sin(half);
+      return { yaw: pose.yaw, pitch: pose.pitch, distance, target: tableFocus };
     };
+    fitCamera = table ? (aspect) => controls!.set(restingPose(aspect)) : undefined;
+    const applyCameraPose = () => controls!.set(restingPose(camera.aspect));
     applyCameraPose();
+    // Intro: start on a centered top view and ease into the resting pose over 2 s.
+    const INTRO_SECONDS = 2;
+    let intro: { start: number; from: { yaw: number; pitch: number; distance: number } } | undefined = {
+      start: -1,
+      from: { yaw: 0, pitch: 1.5, distance: restingPose(camera.aspect).distance * 1.25 },
+    };
+    controls.set(intro.from);
     resetCameraImpl = applyCameraPose;
 
     let lastInteraction = -Infinity;
-    const markInteraction = () => { lastInteraction = performance.now(); };
+    const markInteraction = () => { lastInteraction = performance.now(); intro = undefined; };
     canvas.addEventListener("pointerdown", markInteraction);
     canvas.addEventListener("wheel", markInteraction, { passive: true });
     cleanups.push(() => {
@@ -1108,8 +1113,20 @@ export function startViewer(
       const dt = Math.min(time.deltaTime, 0.1);
       const now = performance.now();
 
-      // Camera
-      if (settings.autoRotate && !table && now - lastInteraction > 2500) {
+      // Camera: intro glide from the top view, then user control.
+      if (intro) {
+        if (intro.start < 0) intro.start = now;
+        const t = Math.min(1, (now - intro.start) / (INTRO_SECONDS * 1000));
+        const e = easeInOutCubic(t);
+        const to = restingPose(camera.aspect);
+        controls!.set({
+          yaw: intro.from.yaw + (to.yaw - intro.from.yaw) * e,
+          pitch: intro.from.pitch + (to.pitch - intro.from.pitch) * e,
+          distance: intro.from.distance + (to.distance - intro.from.distance) * e,
+          target: to.target,
+        });
+        if (t >= 1) intro = undefined;
+      } else if (settings.autoRotate && !table && now - lastInteraction > 2500) {
         controls!.set({ yaw: controls!.yaw + dt * 0.18 });
       }
       controls!.update(dt);
