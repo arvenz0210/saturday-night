@@ -126,7 +126,7 @@ export const MODELS: Record<string, ModelSpec> = {
   turntable: {
     id: "turntable",
     title: "Audio-Technica AT-LP120XUSB",
-    subtitle: "Bandeja giradisco profesional · Direct drive · Negro",
+    subtitle: "Professional direct-drive turntable · Black",
     url: "/models/turntable.glb",
     mobileUrl: "/models/turntable.mobile.glb",
     credit: {

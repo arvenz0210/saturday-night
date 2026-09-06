@@ -16,14 +16,14 @@ import {
 import styles from "./viewer.module.css";
 
 const PHASE_LABEL: Record<ViewerProgress["phase"], string> = {
-  gpu: "Inicializando WebGPU",
-  download: "Descargando modelo",
-  parse: "Leyendo geometría glTF",
-  environment: "Horneando iluminación de estudio",
-  textures: "Subiendo texturas y mipmaps",
-  geometry: "Creando buffers de vértices",
-  compile: "Compilando pipelines WGSL",
-  ready: "Listo",
+  gpu: "Initializing WebGPU",
+  download: "Downloading model",
+  parse: "Reading glTF geometry",
+  environment: "Baking studio lighting",
+  textures: "Uploading textures and mipmaps",
+  geometry: "Building vertex buffers",
+  compile: "Compiling WGSL pipelines",
+  ready: "Ready",
 };
 
 /**
@@ -179,7 +179,7 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
     return (
       <div className={styles.mobileRoot}>
         <div className={styles.mobileStage}>
-          <canvas ref={canvasRef} className={styles.canvas} aria-label={`Vista 3D de ${model.title}`} />
+          <canvas ref={canvasRef} className={styles.canvas} aria-label={`3D view of ${model.title}`} />
           {loading && (
             <div className={styles.mobileOverlay} role="status" aria-live="polite">
               <div className={styles.mobileLoaderPhase}>{PHASE_LABEL[progress.phase]}{progress.phase === "download" && progress.loaded !== undefined ? ` · ${formatBytes(progress.loaded)}` : ""}</div>
@@ -193,45 +193,45 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
           )}
         </div>
 
-        <section className={styles.album} aria-label="Álbum">
+        <section className={styles.album} aria-label="Album">
           {cover && <img className={styles.cover} src={cover} alt="" width={96} height={96} />}
           <h1 className={styles.albumTitle}>{model.audio?.title ?? model.title}</h1>
         </section>
 
         <div className={styles.menuWrap}>
-          <button type="button" className={styles.menuPill} onClick={() => setMenuOpen((v) => !v)} aria-expanded={menuOpen} aria-label="Calidad y audio">
+          <button type="button" className={styles.menuPill} onClick={() => setMenuOpen((v) => !v)} aria-expanded={menuOpen} aria-label="Quality and audio">
             <span className={styles.qualityBar} aria-hidden="true">
               {Array.from({ length: deck.qualityLevels }, (_, i) => (
                 <span key={i} className={i <= deck.qualityLevel ? styles.qualitySegOn : styles.qualitySeg} />
               ))}
             </span>
             <span className={styles.menuPillText}>
-              {deck.qualityMode === "auto" ? "Auto" : deck.qualityMode === "low" ? "Baja" : deck.qualityMode === "medium" ? "Media" : "Alta"}
+              {deck.qualityMode === "auto" ? "Auto" : deck.qualityMode === "low" ? "Low" : deck.qualityMode === "medium" ? "Medium" : "High"}
             </span>
           </button>
           {menuOpen && (
             <div className={styles.menu} role="menu">
-              <div className={styles.menuLabel}>Calidad</div>
+              <div className={styles.menuLabel}>Quality</div>
               <div className={styles.menuRow}>
                 {(["auto", "low", "medium", "high"] as const).map((mode) => (
                   <button key={mode} type="button" role="menuitemradio" aria-checked={deck.qualityMode === mode}
                     className={deck.qualityMode === mode ? styles.menuBtnActive : styles.menuBtn}
                     onClick={() => handleRef.current?.setQualityMode(mode)}>
-                    {mode === "auto" ? "Auto" : mode === "low" ? "Baja" : mode === "medium" ? "Media" : "Alta"}
+                    {mode === "auto" ? "Auto" : mode === "low" ? "Low" : mode === "medium" ? "Medium" : "High"}
                   </button>
                 ))}
               </div>
-              <div className={styles.menuHint}>Nivel {deck.qualityLevel + 1}/{deck.qualityLevels} · Auto mantiene ≥30 fps</div>
+              <div className={styles.menuHint}>Level {deck.qualityLevel + 1}/{deck.qualityLevels} · Auto keeps ≥30 fps</div>
               <div className={styles.menuLabel}>Audio</div>
               <div className={styles.menuRow}>
                 <button type="button" className={styles.menuBtn} onClick={() => fileRef.current?.click()}>
-                  🎵 Cargar canción…
+                  🎵 Load a song…
                 </button>
                 {!deck.audioEnabled && model.audio && (
-                  <button type="button" className={styles.menuBtn} onClick={() => handleRef.current?.enableAudio()}>🔊 Sonido</button>
+                  <button type="button" className={styles.menuBtn} onClick={() => handleRef.current?.enableAudio()}>🔊 Sound</button>
                 )}
               </div>
-              <div className={styles.menuHint}>{deck.audioEnabled ? "Sonando por la púa" : "La canción de demo no está en la web pública; carga un archivo de audio propio."}</div>
+              <div className={styles.menuHint}>{deck.audioEnabled ? "Playing through the stylus" : "The demo track is not on the public site; load your own audio file."}</div>
               <input ref={fileRef} type="file" accept="audio/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleRef.current?.loadAudioFile(f); e.target.value = ""; }} />
             </div>
           )}
@@ -242,7 +242,7 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
 
   return (
     <div className={styles.root}>
-      <canvas ref={canvasRef} className={styles.canvas} aria-label={`Vista 3D de ${model.title}`} />
+      <canvas ref={canvasRef} className={styles.canvas} aria-label={`3D view of ${model.title}`} />
 
       {loading && (
         <div className={styles.overlay} role="status" aria-live="polite">
@@ -273,11 +273,11 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
       {error && (
         <div className={styles.overlay} role="alert">
           <div className={styles.loader}>
-            <div className={styles.loaderTitle}>No se pudo iniciar el visor</div>
+            <div className={styles.loaderTitle}>The viewer could not start</div>
             <p className={styles.errorText}>{error}</p>
             <p className={styles.errorHint}>
-              El visor usa WebGPU a través de <code>vgpu</code>. Comprueba <code>chrome://gpu</code> y que el
-              modelo exista en <code>{model.url}</code>.
+              The viewer runs on WebGPU through <code>vgpu</code>. Check <code>chrome://gpu</code> and that the
+              model exists at <code>{model.url}</code>.
             </p>
           </div>
         </div>
@@ -291,10 +291,10 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
             <p className={styles.subtitle}>{model.subtitle}</p>
           </header>
 
-          <aside className={styles.panel} aria-label="Controles de render">
+          <aside className={styles.panel} aria-label="Render controls">
             <div className={styles.panelSection}>
-              <div className={styles.panelHeading}>Acabado</div>
-              <div className={styles.segmented} role="radiogroup" aria-label="Acabado">
+              <div className={styles.panelHeading}>Finish</div>
+              <div className={styles.segmented} role="radiogroup" aria-label="Finish">
                 <button
                   type="button"
                   role="radio"
@@ -303,7 +303,7 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
                   onClick={() => update({ finish: "black" })}
                   disabled={!model.recolorable}
                 >
-                  Negro
+                  Black
                 </button>
                 <button
                   type="button"
@@ -318,21 +318,21 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
             </div>
 
             <div className={styles.panelSection}>
-              <Slider label="Exposición" value={settings.exposure} min={0.2} max={3} step={0.05} onChange={(v) => update({ exposure: v })} format={(v) => `${v.toFixed(2)}×`} />
-              <Slider label="Rotar iluminación" value={settings.envRotation} min={-Math.PI} max={Math.PI} step={0.01} onChange={(v) => update({ envRotation: v })} format={(v) => `${Math.round((v * 180) / Math.PI)}°`} />
-              <Slider label="Luz ambiente" value={settings.envIntensity} min={0} max={2.5} step={0.05} onChange={(v) => update({ envIntensity: v })} format={(v) => v.toFixed(2)} />
-              <Slider label="Luz principal" value={settings.lightIntensity} min={0} max={8} step={0.1} onChange={(v) => update({ lightIntensity: v })} format={(v) => v.toFixed(1)} />
+              <Slider label="Exposure" value={settings.exposure} min={0.2} max={3} step={0.05} onChange={(v) => update({ exposure: v })} format={(v) => `${v.toFixed(2)}×`} />
+              <Slider label="Rotate lighting" value={settings.envRotation} min={-Math.PI} max={Math.PI} step={0.01} onChange={(v) => update({ envRotation: v })} format={(v) => `${Math.round((v * 180) / Math.PI)}°`} />
+              <Slider label="Ambient light" value={settings.envIntensity} min={0} max={2.5} step={0.05} onChange={(v) => update({ envIntensity: v })} format={(v) => v.toFixed(2)} />
+              <Slider label="Key light" value={settings.lightIntensity} min={0} max={8} step={0.1} onChange={(v) => update({ lightIntensity: v })} format={(v) => v.toFixed(1)} />
               <Slider label="Bloom" value={settings.bloom} min={0} max={1.5} step={0.05} onChange={(v) => update({ bloom: v })} format={(v) => v.toFixed(2)} />
             </div>
 
             <div className={styles.panelSection}>
-              <div className={styles.panelHeading}>Bandeja</div>
+              <div className={styles.panelHeading}>Deck</div>
               <div className={styles.segmented}>
                 <button type="button" className={deck.playing ? styles.segmentActive : styles.segment} onClick={() => handleRef.current?.togglePlay()} disabled={info ? info.spinningNodes.length === 0 : false}>
                   {deck.playing ? "■ Stop" : "▶ Start"}
                 </button>
                 <button type="button" className={deck.armDown ? styles.segmentActive : styles.segment} onClick={() => handleRef.current?.toggleArm()} disabled={info ? !info.hasTonearm : false}>
-                  {deck.armDown ? "Brazo: en el disco" : "Brazo: en reposo"}
+                  {deck.armDown ? "Arm: on record" : "Arm: at rest"}
                 </button>
               </div>
               <Slider
@@ -344,7 +344,7 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
                 onChange={(v) => handleRef.current?.setPitch(v / 100)}
                 format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)}% · ${(33.33 * (1 + v / 100)).toFixed(2)} rpm`}
               />
-              <Toggle label="Auto-rotar cámara" checked={settings.autoRotate} onChange={(v) => update({ autoRotate: v })} />
+              <Toggle label="Auto-rotate camera" checked={settings.autoRotate} onChange={(v) => update({ autoRotate: v })} />
             </div>
 
             {model.audio && (
@@ -356,14 +356,14 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
                 </div>
                 {deck.audioEnabled ? (
                   <>
-                    <canvas ref={spectrumRef} className={styles.spectrum} width={240} height={44} aria-label="Espectro de audio" />
+                    <canvas ref={spectrumRef} className={styles.spectrum} width={240} height={44} aria-label="Audio spectrum" />
                     <div className={styles.progress} aria-hidden="true">
                       <div className={styles.progressFill} style={{ width: `${deck.progress * 100}%` }} />
                     </div>
                   </>
                 ) : (
                   <button type="button" className={styles.button} onClick={() => handleRef.current?.enableAudio()}>
-                    🔊 Activar sonido
+                    🔊 Enable sound
                   </button>
                 )}
               </div>
@@ -371,22 +371,22 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
 
             <div className={styles.panelActions}>
               <button type="button" className={styles.button} onClick={() => handleRef.current?.resetCamera()}>
-                Reiniciar cámara <kbd>R</kbd>
+                Reset camera <kbd>R</kbd>
               </button>
               <button type="button" className={styles.buttonGhost} onClick={() => setHudHidden(true)}>
-                Ocultar UI <kbd>H</kbd>
+                Hide UI <kbd>H</kbd>
               </button>
             </div>
           </aside>
 
           <footer className={styles.footer}>
-            <div className={styles.hint}>Arrastra para orbitar · Rueda para acercar · Toca el brazo, START/STOP o el pitch</div>
+            <div className={styles.hint}>Drag to orbit · Wheel to zoom · Tap the arm, START/STOP or the pitch</div>
             {info && (
               <dl className={styles.stats}>
                 <div><dt>FPS</dt><dd>{fps ? fps.toFixed(0) : "–"}</dd></div>
-                <div><dt>Triángulos</dt><dd>{info.triangles.toLocaleString("es")}</dd></div>
+                <div><dt>Triangles</dt><dd>{info.triangles.toLocaleString("es")}</dd></div>
                 <div><dt>Draw calls</dt><dd>{info.drawCalls}</dd></div>
-                <div><dt>Texturas</dt><dd>{info.textures}</dd></div>
+                <div><dt>Textures</dt><dd>{info.textures}</dd></div>
                 <div className={styles.statWide}><dt>GPU</dt><dd title={info.adapter}>{info.adapter}</dd></div>
               </dl>
             )}
@@ -406,7 +406,7 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
       )}
       {hudHidden && (
         <button type="button" className={styles.showHud} onClick={() => setHudHidden(false)}>
-          Mostrar UI <kbd>H</kbd>
+          Show UI <kbd>H</kbd>
         </button>
       )}
     </div>

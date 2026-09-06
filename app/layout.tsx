@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AT-LP120XUSB · Visor 3D WebGPU (vgpu)",
+  title: "AT-LP120XUSB · WebGPU 3D viewer (vgpu)",
   description:
-    "Bandeja giradisco profesional Audio-Technica AT-LP120XUSB renderizada en tiempo real con WebGPU mediante vgpu: PBR, iluminación de estudio, sombras suaves y bloom.",
+    "Audio-Technica AT-LP120XUSB professional turntable rendered in real time with WebGPU via vgpu: PBR, studio lighting, soft shadows and bloom.",
 };
 
 export const viewport: Viewport = {
@@ -26,7 +26,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="es" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>{children}</body>
     </html>
   );

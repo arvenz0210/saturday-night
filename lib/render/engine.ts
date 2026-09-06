@@ -272,7 +272,7 @@ export function startViewer(
       },
     };
     if (!("gpu" in navigator) || !navigator.gpu) {
-      throw new Error("WebGPU no está disponible en este navegador. Usa Chrome 113+, Edge 113+ o Safari 26+.");
+      throw new Error("WebGPU is not available in this browser. Use Chrome 113+, Edge 113+ or Safari 26+.");
     }
     callbacks.onProgress({ phase: "gpu" });
     gpu = await init({ powerPreference: "high-performance" });
@@ -1357,7 +1357,7 @@ export function startViewer(
 
 async function fetchWithProgress(url: string, onProgress: (loaded: number, total?: number) => void): Promise<ArrayBuffer> {
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`No se pudo descargar el modelo (${response.status}) desde ${url}`);
+  if (!response.ok) throw new Error(`Could not download the model (${response.status}) from ${url}`);
   const total = Number(response.headers.get("content-length")) || undefined;
   if (!response.body) return response.arrayBuffer();
   const reader = response.body.getReader();
