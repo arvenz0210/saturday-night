@@ -133,10 +133,10 @@ const IS_LED = 512;
 const SHADOW_SIZE = 2048;
 const BACKGROUND: [number, number, number] = [0.012, 0.012, 0.015];
 const PLATTER_RPM = 33.33;
-const PRESS_DEPTH = 0.0012; // meters, before model scale
+/** Press feedback: the button's own LED blinks off briefly. */
+const PRESS_BLINK = 0.14; // seconds
 /** A full LP side: the stylus travels lead-in to run-out in about 20 minutes at 33⅓. */
 const SIDE_SECONDS = 20 * 60;
-const PRESS_DURATION = 0.28; // seconds, down and back up
 
 const VERTEX_LAYOUT = {
   stride: VERTEX_STRIDE_BYTES,
@@ -877,13 +877,16 @@ export function startViewer(
       sceneUniforms.set({ [`pressMin${b.slot}`]: [...b.bounds.min, 0], [`pressMax${b.slot}`]: [...b.bounds.max, 0] });
     }
     const identity = mat4.identity();
-    const updateLeds = () => {
-      const states = [1, 1, 0, 0];
+    const ledStateOf = (id: DeckButtonId) =>
+      id === "speed33" ? (deck.speed === 33 ? 1 : 0.08)
+        : id === "speed45" ? (deck.speed === 45 ? 1 : 0.08)
+        : id === "quartz" ? (deck.quartz ? 1 : 0.05)
+        : 1;
+    const updateLeds = (now = performance.now()) => {
+      const states = [1, 1, 1, 1];
       for (const [i, b] of buttons.entries()) {
-        states[i] = b.id === "speed33" ? (deck.speed === 33 ? 1 : 0.08)
-          : b.id === "speed45" ? (deck.speed === 45 ? 1 : 0.08)
-          : b.id === "quartz" ? (deck.quartz ? 1 : 0.05)
-          : 1;
+        const blinking = now - b.pressedAt < PRESS_BLINK * 1000;
+        states[i] = blinking ? 0.15 : ledStateOf(b.id);
       }
       sceneUniforms.set({ ledStates: states });
     };
@@ -1072,12 +1075,8 @@ export function startViewer(
       if (settings.spin !== deck.running) { deck.running = settings.spin; emitState(); }
       const effectivePitch = deck.quartz ? 0 : deck.pitch;
       const targetOmega = deck.running ? (deck.speed / 60) * Math.PI * 2 * (1 + effectivePitch) : 0;
-      // Press animation: a quick dip and return for any recently tapped button.
-      for (const b of buttons) {
-        const age = (now - b.pressedAt) / 1000;
-        const depth = age >= 0 && age < PRESS_DURATION ? Math.sin((age / PRESS_DURATION) * Math.PI) * PRESS_DEPTH * scale : 0;
-        sceneUniforms.set({ [`pressMax${b.slot}`]: [...b.bounds.max, depth] });
-      }
+      // Press feedback: LEDs of a just-tapped button blink off for a moment.
+      if (buttons.some((b) => now - b.pressedAt < PRESS_BLINK * 1000 + 50)) updateLeds(now);
       const rate = deck.running ? 6 : 1.4;
       deck.omega += (targetOmega - deck.omega) * Math.min(1, dt * rate);
       if (!deck.running && deck.omega < 0.01) deck.omega = 0;

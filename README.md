@@ -106,8 +106,8 @@ encienden con el motor en marcha.
 ## Botones físicos
 
 START/STOP, 33, 45 y QUARTZ son cajas en el espacio de la escena (`controls.buttons` en
-`lib/models.ts`). Al tocarlas la geometría dentro de la caja se hunde ~1 mm (animación de
-pulsación en el vertex shader) y sus LED siguen el estado: 33/45 seleccionan la velocidad
+`lib/models.ts`). Al tocarlas su LED parpadea un instante (feedback de pulsación, sin deformar
+geometría) y luego sigue el estado: 33/45 seleccionan la velocidad
 nominal del plato (el audio sube a 45 rpm como en un disco real), QUARTZ bloquea el pitch
 a 0 % (LED encendido) hasta volver a pulsarlo. El brazo avanza hacia el centro al ritmo del
 plato como en una cara real (~20 min de surco).

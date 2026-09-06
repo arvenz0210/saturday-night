@@ -31,7 +31,7 @@ struct Scene {
   hideBoxMax: vec3f,
   hideBox2Min: vec3f,
   hideBox2Max: vec3f,
-  /** Button boxes A..D (xyz) — Max.w carries the current press depth in world units. */
+  /** Button boxes A..D (xyz) locate each button's LEDs; .w unused. */
   pressMinA: vec4f,
   pressMaxA: vec4f,
   pressMinB: vec4f,
@@ -119,13 +119,7 @@ struct VertexOut {
   @location(3) tangent: vec4f,
 ) -> VertexOut {
   var out: VertexOut;
-  var world = model.model * vec4f(position, 1.0);
-  // Press animation: geometry inside a button box dips by that box's current depth.
-  let button = buttonIndex(world.xyz);
-  if (button == 0) { world.y -= scene.pressMaxA.w; }
-  else if (button == 1) { world.y -= scene.pressMaxB.w; }
-  else if (button == 2) { world.y -= scene.pressMaxC.w; }
-  else if (button == 3) { world.y -= scene.pressMaxD.w; }
+  let world = model.model * vec4f(position, 1.0);
   out.position = scene.viewProjection * world;
   out.worldPosition = world.xyz;
   out.worldNormal = normalize((model.normalMatrix * vec4f(normal, 0.0)).xyz);
@@ -262,7 +256,8 @@ fn sampleEnvIrradiance(dir: vec3f) -> vec3f {
     // Unpowered LED: dark smoked plastic instead of the lit color. Per-button LEDs follow their state.
     var power = scene.ledPower;
     let button = buttonIndex(in.worldPosition);
-    if (button == 1) { power *= scene.ledStates.y; }
+    if (button == 0) { power *= scene.ledStates.x; }
+    else if (button == 1) { power *= scene.ledStates.y; }
     else if (button == 2) { power *= scene.ledStates.z; }
     else if (button == 3) { power *= scene.ledStates.w; }
     emissive *= power;
