@@ -261,6 +261,7 @@ export function startViewer(
   let qualityModeBeforeRecording: QualityMode = "auto";
   let recording = false;
   let emitStateImpl: (() => void) | undefined;
+  let stopCompositingImpl: (() => void) | undefined;
   let setQualityModeImpl: ((mode: QualityMode) => void) | undefined;
   let loadAudioFileImpl: ((file: File) => Promise<void>) | undefined;
   const cleanups: Array<() => void> = [];
@@ -906,7 +907,18 @@ export function startViewer(
     };
     applyArmPose();
     if (new URLSearchParams(location.search).has("debug")) {
-      (window as unknown as { __instances?: unknown }).__instances = instances.map((i) => ({ name: i.name, mesh: i.meshIndex, role: i.role, pose: !!i.pose, spin: i.spin }));
+      const w = window as unknown as { __instances?: unknown; __project?: (x: number, y: number, z: number) => [number, number] };
+      w.__instances = instances.map((i) => ({ name: i.name, mesh: i.meshIndex, role: i.role, pose: !!i.pose, spin: i.spin }));
+      // Scene-space point (meters, before `root`) -> CSS pixel in the canvas.
+      w.__project = (x, y, z) => {
+        const world = vec3.transformMat4(vec3.create(x, y, z), root);
+        const vp = camera.viewProjection;
+        const cx = vp[0] * world[0] + vp[4] * world[1] + vp[8] * world[2] + vp[12];
+        const cy = vp[1] * world[0] + vp[5] * world[1] + vp[9] * world[2] + vp[13];
+        const cw = vp[3] * world[0] + vp[7] * world[1] + vp[11] * world[2] + vp[15];
+        const rect = canvas.getBoundingClientRect();
+        return [rect.left + ((cx / cw) * 0.5 + 0.5) * rect.width, rect.top + (0.5 - (cy / cw) * 0.5) * rect.height];
+      };
     }
     const applyPitchPose = () => {
       if (!pitchSpec) return;
@@ -1359,7 +1371,68 @@ export function startViewer(
     },
     startRecording() {
       if (recorder) return;
-      const stream = canvas.captureStream(60);
+      // Composite the WebGPU canvas with the album overlay (cover + title) on a 2D canvas so the
+      // clip matches the page without the menu; captured at the canvas backing resolution.
+      const composite = document.createElement("canvas");
+      composite.width = canvas.width;
+      composite.height = canvas.height;
+      const ctx2d = composite.getContext("2d")!;
+      const dpr = canvas.width / Math.max(1, canvas.getBoundingClientRect().width);
+      const cover = new Image();
+      let coverReady = false;
+      if (model.label?.image) {
+        cover.onload = () => { coverReady = true; };
+        cover.src = model.label.image;
+      }
+      const title = model.audio?.title ?? model.title;
+      let compositing = true;
+      const drawFrame = () => {
+        if (!compositing) return;
+        if (composite.width !== canvas.width || composite.height !== canvas.height) {
+          composite.width = canvas.width;
+          composite.height = canvas.height;
+        }
+        ctx2d.drawImage(canvas, 0, 0);
+        if (table) {
+          const coverSize = (table && canvas.width / dpr > 820 ? 110 : 96) * dpr;
+          const bottom = 28 * dpr;
+          const titleSize = 17 * dpr;
+          const gap = 16 * dpr;
+          const cx = composite.width / 2;
+          const titleY = composite.height - bottom;
+          const coverY = titleY - titleSize - gap - coverSize;
+          if (coverReady) {
+            const r = 10 * dpr;
+            const x = cx - coverSize / 2;
+            ctx2d.save();
+            ctx2d.shadowColor = "rgba(0,0,0,0.18)";
+            ctx2d.shadowBlur = 36 * dpr;
+            ctx2d.shadowOffsetY = 14 * dpr;
+            ctx2d.beginPath();
+            ctx2d.roundRect(x, coverY, coverSize, coverSize, r);
+            ctx2d.fillStyle = "#fff";
+            ctx2d.fill();
+            ctx2d.restore();
+            ctx2d.save();
+            ctx2d.beginPath();
+            ctx2d.roundRect(x, coverY, coverSize, coverSize, r);
+            ctx2d.clip();
+            // Center-crop the cover to a square.
+            const side = Math.min(cover.naturalWidth, cover.naturalHeight);
+            ctx2d.drawImage(cover, (cover.naturalWidth - side) / 2, (cover.naturalHeight - side) / 2, side, side, x, coverY, coverSize, coverSize);
+            ctx2d.restore();
+          }
+          ctx2d.fillStyle = "#141416";
+          ctx2d.font = `600 ${titleSize}px Geist, "Geist Sans", system-ui, -apple-system, sans-serif`;
+          ctx2d.textAlign = "center";
+          ctx2d.textBaseline = "bottom";
+          ctx2d.fillText(title, cx, titleY);
+        }
+        requestAnimationFrame(drawFrame);
+      };
+      requestAnimationFrame(drawFrame);
+      const stream = composite.captureStream(60);
+      const stopCompositing = () => { compositing = false; };
       const audioStream = audio?.recordingStream();
       if (audioStream) for (const track of audioStream.getAudioTracks()) stream.addTrack(track);
       const candidates = [
@@ -1377,6 +1450,7 @@ export function startViewer(
       qualityModeBeforeRecording = qualityMode;
       setQualityModeImpl?.("high");
       recorder.start(1000);
+      stopCompositingImpl = stopCompositing;
       recording = true;
       emitStateImpl?.();
       console.info(`[viewer] recording ${canvas.width}x${canvas.height} as ${recorderMime || "default"}`);
@@ -1386,6 +1460,7 @@ export function startViewer(
         const active = recorder;
         if (!active) { resolve({ blob: new Blob(), extension: "webm" }); return; }
         active.onstop = () => {
+          stopCompositingImpl?.();
           const blob = new Blob(recorderChunks, { type: recorderMime || active.mimeType });
           recorder = undefined;
           recording = false;
