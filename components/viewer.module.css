@@ -731,3 +731,9 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+.fps {
+  color: #6b6860;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}

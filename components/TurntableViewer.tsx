@@ -207,6 +207,7 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
             </span>
             <span className={styles.menuPillText}>
               {deck.qualityMode === "auto" ? "Auto" : deck.qualityMode === "low" ? "Low" : deck.qualityMode === "medium" ? "Medium" : "High"}
+              {info && <span className={styles.fps}> · {fps ? Math.round(fps) : "–"} fps</span>}
             </span>
           </button>
           {menuOpen && (
@@ -393,11 +394,11 @@ export default function TurntableViewer({ modelId }: { modelId?: string }) {
             <div className={styles.credit}>
               {[model.credit, ...(model.attachments ?? []).map((a) => a.credit)].map((credit, i) => (
                 <div key={credit.url}>
-                  {i === 0 ? "Modelo: " : "+ "}
+                  {i === 0 ? "Model: " : "+ "}
                   <a href={credit.url} target="_blank" rel="noopener noreferrer">
                     {credit.source}
                   </a>{" "}
-                  por {credit.author} · {credit.license}
+                  by {credit.author} · {credit.license}
                 </div>
               ))}
             </div>
